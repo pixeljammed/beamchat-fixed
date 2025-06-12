@@ -1,6 +1,6 @@
 -- services
 local rs = game:GetService("ReplicatedStorage")
-local chat = game:GetService("Chat")
+local textChatService = game:GetService("TextChatService")
 local players = game:GetService("Players")
 
 local beamchatRS = rs:WaitForChild("beamchat")
@@ -77,53 +77,58 @@ players.PlayerAdded:Connect(function(plr)
 	chatGui.Parent = plr:WaitForChild("PlayerGui")
 end)
 
-local chatEvent = remotes:WaitForChild("chat")
-chatEvent.OnServerEvent:Connect(function(plr, msg)
-	-- check if the player isn't spamming
-	if timestamps[plr.Name] <= config.maxSpam then
-		-- add an entry to the anit-spam filter
-		timestamps[plr.Name] = timestamps[plr.Name] + 1
-		Thread.Spawn(function()
-			-- take it out after config.spamLife seconds
-			wait(config.spamLife)
-			timestamps[plr.Name] = timestamps[plr.Name] - 1
-		end)
+-- Set up TextChatService message handling
+textChatService.OnIncomingMessage:Connect(function(message)
+	if message.Status == Enum.TextChatMessageStatus.Success then
+		local plr = message.TextSource
+		if not plr then return end
 
-		local type = getMessageType(msg)
-		local filtered = chat:FilterStringAsync(sanitize(msg), plr, plr)
+		-- check if the player isn't spamming
+		if timestamps[plr.Name] <= config.maxSpam then
+			-- add an entry to the anit-spam filter
+			timestamps[plr.Name] = timestamps[plr.Name] + 1
+			Thread.Spawn(function()
+				-- take it out after config.spamLife seconds
+				wait(config.spamLife)
+				timestamps[plr.Name] = timestamps[plr.Name] - 1
+			end)
 
-		if type == "general" then
-			local chatData = {user = plr.Name, message = filtered, type = type, bubbleChat = config.bubbleChat, specialTags = {}}
+			local type = getMessageType(message.Text)
+			local filtered = message.Text
 
-			for _,v in pairs(chatTags) do
-				for _,id in pairs(v[2]) do
-					if plr.UserId == id then
-						table.insert(chatData.specialTags, v[1])
+			if type == "general" then
+				local chatData = {user = plr.Name, message = filtered, type = type, bubbleChat = config.bubbleChat, specialTags = {}}
+
+				for _,v in pairs(chatTags) do
+					for _,id in pairs(v[2]) do
+						if plr.UserId == id then
+							table.insert(chatData.specialTags, v[1])
+						end
 					end
 				end
-			end
 
-			remotes.chat:FireAllClients(chatData)
-		elseif type == "whisper" then
-			local parameters = split(msg, " ")
-			if players:FindFirstChild(parameters[2]) then
-				local target = players[parameters[2]]
-				if target ~= plr then
-					local content = sub(filtered, 3 + len(target.Name) + 1)
-					local chatData = {user = plr.Name, message = content, type = type, target = target.Name}
+				remotes.chat:FireAllClients(chatData)
+			elseif type == "whisper" then
+				local parameters = split(message.Text, " ")
+				if players:FindFirstChild(parameters[2]) then
+					local target = players[parameters[2]]
+					if target ~= plr then
+						local content = sub(filtered, 3 + len(target.Name) + 1)
+						local chatData = {user = plr.Name, message = content, type = type, target = target.Name}
 
-					-- send the message to both the sender and receiver
-					remotes.chat:FireClient(plr, chatData)
-					remotes.chat:FireClient(target, chatData)
+						-- send the message to both the sender and receiver
+						remotes.chat:FireClient(plr, chatData)
+						remotes.chat:FireClient(target, chatData)
+					else
+						remotes.chat:FireClient(plr, {user = "[system]", message = "You can't whisper to yourself.", type = "system"})
+					end
 				else
-					remotes.chat:FireClient(plr, {user = "[system]", message = "You can't whisper to yourself.", type = "system"})
+					remotes.chat:FireClient(plr, {user = "[system]", message = "Player not found.", type = "system"})
 				end
-			else
-				remotes.chat:FireClient(plr, {user = "[system]", message = "Player not found.", type = "system"})
 			end
+		else
+			remotes.chat:FireClient(plr, {user = "[system]", message = "Please wait before sending another message.", type = "system"})
 		end
-	else
-		remotes.chat:FireClient(plr, {user = "[system]", message = "Please wait before sending another message.", type = "system"})
 	end
 end)
 

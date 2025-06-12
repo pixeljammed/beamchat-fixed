@@ -24,6 +24,7 @@ local deb = game:GetService("Debris")
 local players = game:GetService("Players")
 local rs = game:GetService("ReplicatedStorage")
 local txt = game:GetService("TextService")
+local textChatService = game:GetService("TextChatService")
 
 -- initialization
 local beamchatRS = rs:WaitForChild("beamchat")
@@ -56,201 +57,89 @@ local beamchat = plr:WaitForChild("PlayerGui"):WaitForChild("beamchat2"):WaitFor
 local chatbar, chatbox = beamchat:WaitForChild("chatbar"), beamchat:WaitForChild("chatbox")
 
 -- Generate the frame for any possible search results.
-local function generateResultsFrame()
-	local resultsFrame = Instance.new("Frame")
-	resultsFrame.AnchorPoint = v2(0, 1)
-	resultsFrame.BackgroundColor3 = c3()
-	resultsFrame.BorderSizePixel = 0
-	resultsFrame.BackgroundTransparency = 0.15
-	resultsFrame.Name = "results"
-	resultsFrame.Position = u2(0, -10, 0, -10)
-	resultsFrame.ClipsDescendants = true
-	resultsFrame.Parent = chatbar
+function chatModule.generateResults()
+	local results = Instance.new("Frame")
+	results.Name = "results"
+	results.BackgroundTransparency = 1
+	results.Size = u2(1, 0, 0, 0)
+	results.Position = u2(0, 0, 1, 0)
+	results.Parent = chatbar
 
 	local highlight = Instance.new("Frame")
-	highlight.BackgroundTransparency = 0.85
-	highlight.BackgroundColor3 = c3(255, 255, 255)
-	highlight.BorderSizePixel = 0
-	highlight.ZIndex = 2
-	highlight.Size = u2(1, 0, 0, 26)
-	highlight.Position = u2()
 	highlight.Name = "highlight"
-	highlight.Parent = resultsFrame
+	highlight.BackgroundColor3 = c3w
+	highlight.BackgroundTransparency = 0.9
+	highlight.BorderSizePixel = 0
+	highlight.Size = u2(1, 0, 0, 26)
+	highlight.Position = u2(0, 0, 0, 0)
+	highlight.Parent = results
 
 	local entries = Instance.new("Frame")
-	entries.BorderSizePixel = 0
+	entries.Name = "entries"
 	entries.BackgroundTransparency = 1
 	entries.Size = u2(1, 0, 1, 0)
-	entries.Name = "entries"
-	entries.Parent = resultsFrame
+	entries.Parent = results
 
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0, 5)
-	padding.PaddingRight = UDim.new(0, 5)
-	padding.Parent = entries
-
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Parent = entries
-
-	return resultsFrame
+	return results
 end
 
-function chatModule.fadeOut()
-	effects.fade(chatbar.label, 0.25, {TextTransparency = 1, TextStrokeTransparency = 1})
+-- Get the last word of a string.
+function chatModule.getLastWord(str)
+	local lastWord = ""
+	local words = {}
+
+	for word in gmatch(str, "%S+") do
+		table.insert(words, word)
+	end
+
+	if #words > 0 then
+		lastWord = words[#words]
+	end
+
+	return lastWord
 end
 
 -- Clear the search results.
 function chatModule.clearResults()
-	chatModule.searching = nil
-	local res = chatbar:FindFirstChild("results")
-	if res then
-		res:TweenSize(u2(1, 20, 0, 0), "Out", "Quart", 0.25, true)
-		wait(0.25)
-		res:Destroy()
+	if chatModule.searching then
+		local res = chatbar:FindFirstChild("results")
+		if res then
+			res:TweenSize(u2(0, res.Size.X.Offset, 0, 0), "Out", "Quart", 0.25, true)
+			wait(0.25)
+			res:Destroy()
+		end
+
+		chatModule.searching = nil
 	end
 end
 
--- Get the last word in a string.
--- @param {string} queryString - The string to strip the last word from.
-function chatModule.getLastWord(queryString)
-	return string.gmatch(queryString, "([^%s]+)$")() -- thanks quenty :)
-end
+-- Correct the chatbar bounds.
+function chatModule.correctBounds(reset)
+	if reset then
+		chatbar.Size = u2(1, 0, 0, 32)
+		return
+	end
 
--- Dynamically resize the bounds of the chatbar when typing.
--- @param {boolean} default - Whether or not the chatbar should reset to its default size.
-function chatModule.correctBounds(default)
-	if default then
-		chatbar:TweenSize(u2(1, 0, 0, 35), "Out", "Quart", 0.25, true)
-		chatbar.input:TweenSize(u2(1, 0, 0, 17), "Out", "Quart", 0.25, true)
+	local input = chatbar.input
+	local label = chatbar.label
+
+	if input.Text == "" then
+		chatbar.Size = u2(1, 0, 0, 32)
 	else
-		local bounds = txt:GetTextSize(chatbar.input.Text, 17, Enum.Font.SourceSans, v2(chatbar.input.AbsoluteSize.X, 1000))
-		chatbar:TweenSize(u2(1, 0, 0, bounds.Y + 18), "Out", "Quart", 0.25, true)
-		chatbar.input.Size = u2(1, 0, 0, bounds.Y)
+		local textSize = txt:GetTextSize(input.Text, 18, Enum.Font.SourceSans, v2(chatbar.AbsoluteSize.X, 1000))
+		chatbar.Size = u2(1, 0, 0, textSize.Y + 16)
 	end
 end
 
--- Search for players/commands.
-function chatModule.search()
-	local input = chatbar.input.Text
-	local lastWord = chatModule.getLastWord(input)
-
-	if input ~= "" and input ~= nil then
-		pcall(function()
-			if sub(lastWord, 0, 1) ~= ":" then
-				-- search for players
-				chatbar.input:ReleaseFocus()
-
-				local matches = {}
-				for result in gmatch(input, "[^%s]+") do
-					if sub(input, (#input - #result) + 1) == result then
-						-- strip @ from string
-						local name = lower(gsub(result, "@", ""))
-						for _,player in pairs(players:GetPlayers()) do
-							if find(lower(player.Name), name) then
-								table.insert(matches, player.Name)
-							end
-						end
-					end
-				end
-
-				-- generate list if there are multiple results
-				if #matches > 1 then
-					local resultsFrame = generateResultsFrame()
-					local longest = ""
-
-					for i = 1, #matches do
-						if #matches[i] > #longest then
-							longest = matches[i]
-						end
-
-						local t = Instance.new("TextLabel")
-						t.BackgroundTransparency = 1
-						t.BorderSizePixel = 0
-						t.ZIndex = 3
-						t.Size = u2(1, 0, 0, 26)
-						t.TextXAlignment = Enum.TextXAlignment.Left
-						t.Font = Enum.Font.SourceSansBold
-						t.Name = tostring(i)
-						t.Text = matches[i]
-						t.TextSize = 17
-						t.TextColor3 = c3w
-						t.TextTransparency = i == 1 and 0 or 0.2
-						t.Parent = resultsFrame.entries
-					end
-
-					resultsFrame:TweenSize(u2(1, 20, 0, #matches*26), "Out", "Quart", 0.25, true)
-					chatModule.searching = {type = "username", selected = 1, results = matches, last = lastWord}
-				elseif #matches == 1 then
-					local finalStr = sub(input, 0, #input - #lastWord) .. matches[1] .. " "
-
-					if sub(lastWord, 0, 1) == "@" then
-						finalStr = sub(input, 0, #input - #lastWord) .. "@" .. matches[1] .. " "
-					end
-
-					chatbar.input.Text = finalStr
-				end
-
-				wait()
-				chatbar.input:CaptureFocus()
-			elseif sub(lastWord, 0, 1) == ":" then
-				if sub(input, (#input - #lastWord) + 1) == lastWord then
-					if (sub(lastWord, 0, 1) == ":") and not (sub(lastWord, #lastWord) == ":") then
-						if len(sub(lastWord, 2, 3)) >= 2 then
-							-- search for relevant emojis
-							local query = sub(lastWord, 2, len(lastWord))
-							local results = emoji.search(query)
-
-							-- clear current entries
-							local res = chatbar:FindFirstChild("results") or generateResultsFrame()
-							for _,v in pairs(res:WaitForChild("entries"):GetChildren()) do
-								if v:IsA("TextLabel") then
-									v:Destroy()
-								end
-							end
-
-							-- create results list
-							local function createEmojiEntry(iteration, name, obj)
-								local t = Instance.new("TextLabel")
-								t.BackgroundTransparency = 1
-								t.BorderSizePixel = 0
-								t.ZIndex = 3
-								t.Size = u2(1, 0, 0, 26)
-								t.TextXAlignment = Enum.TextXAlignment.Left
-								t.Font = Enum.Font.SourceSansBold
-								t.Name = iteration
-								t.Text = obj .. " :" .. name .. ":"
-								t.TextSize = 17
-								t.TextColor3 = c3w
-								t.TextTransparency = iteration == 1 and 0 or 0.4
-								t.Parent = res.entries
-							end
-
-							-- iterate through results
-							local c = 0
-							for i,v in pairs(results) do
-								if c <= 6 then
-									c = c + 1
-									createEmojiEntry(i, v[1], v[2])
-								end
-							end
-
-							-- display results
-							res:TweenSize(u2(1, 20, 0, #results*26), "Out", "Quart", 0.25, true)
-							chatModule.searching = {type = "emoji", selected = 1, results = results, last = lastWord}
-						end
-					end
-				end
-			end
-		end)
-	else
-		wait()
-		chatbar.input:CaptureFocus()
+-- Fade out the chat.
+function chatModule.fadeOut()
+	if not chatModule.inContainer and not chatbar.input:IsFocused() then
+		effects.fade(chatbox, 0.25, {BackgroundTransparency = 1, ScrollBarImageTransparency = 1})
+		effects.fade(chatbar, 0.25, {BackgroundTransparency = 1})
+		effects.fade(chatbar.label, 0.25, {TextTransparency = 0.5, TextStrokeTransparency = 0.85})
 	end
 end
 
--- Strip newlines and empty whitespace from the string.
--- @param {string} str - the string to sanitize.
 function chatModule.sanitize(str)
 	local sanitized = string.gsub(str, "%s+", " ")
 	if sanitized ~= nil and sanitized ~= "" and sanitized ~= " " then
@@ -287,7 +176,7 @@ function chatModule.chatbar(sending)
 			-- why doesn't it take the renderstepped wait pls?????????
 			wait()
 			chatbar.input:CaptureFocus()
-		else
+		
 			chatModule.chatbarToggle = false
 			-- capture user input
 			local msg = chatbar.input.Text
@@ -333,43 +222,6 @@ function chatModule.chatbar(sending)
 							plr.Character.Animate.PlayEmote:Invoke(emoteName)
 							plr.Character.Humanoid:PlayEmote(emoteTable[emoteName])
 						end)
-					elseif sub(lowerS, 0, 9) == "/mutelist" then
-						if #chatModule.muted == 0 then
-							chatModule.newSystemMessage("You haven't muted anyone.")
-						else
-							local mutelist = ""
-							for i,v in pairs(chatModule.muted) do
-								local properCase
-								for _,x in pairs(players:GetPlayers()) do
-									if lower(x.Name) == v then
-										properCase = x.Name
-									end
-								end
-
-								-- more than 2 players muted
-								if #chatModule.muted > 1 and #chatModule.muted ~= 2 and #chatModule.muted ~= 0 then
-									if i == 1 then
-										mutelist = ("You have muted %s, "):format(properCase)
-									elseif i ~= #chatModule.muted then
-										mutelist = mutelist .. ("%s, "):format(properCase)
-									else
-										mutelist = mutelist .. ("and %s."):format(properCase)
-									end
-								-- only two players muted
-								elseif #chatModule.muted == 2 then
-									if i == 1 then
-										mutelist = ("You have muted %s"):format(properCase)
-									else
-										mutelist = mutelist .. (" and %s."):format(properCase)
-									end
-								-- only 1 player muted
-								else
-									mutelist = ("You have only muted %s."):format(properCase)
-								end
-							end
-
-							chatModule.newSystemMessage(mutelist)
-						end
 					elseif sub(lowerS, 0, 5) == "/mute" then
 						local target = chatModule.sanitize(sub(lowerS, 7))
 
@@ -426,7 +278,7 @@ function chatModule.chatbar(sending)
 							sanitized = "¯\\_(ツ)_/¯"
 						end
 
-						remotes:WaitForChild("chat"):FireServer(sanitized)
+						textChatService.TextChannels.RBXGeneral:SendAsync(sanitized)
 					end
 				end
 			end
@@ -493,7 +345,6 @@ function chatModule.newMessage(chatData)
 	if not muted then
 		local player = players:FindFirstChild(user)
 		if player then
-			--chat:Chat(player.Character, msg, Enum.ChatColor.White)
 			bubbleChat.newBubble(player.UserId, msg)
 		end
 
@@ -540,7 +391,7 @@ function chatModule.newMessage(chatData)
 			end
 
 			preText = ("{%s}{b}%s %s{}{} "):format(colors.getColor(user), formatting, user)
-		elseif type == "general" then
+		
 			local iconTag = ""
 
 			if player then

@@ -5,7 +5,7 @@
 local rs = game:GetService("ReplicatedStorage")
 local sg = game:GetService("StarterGui")
 local uis = game:GetService("UserInputService")
-local cs = game:GetService("Chat")
+local textChatService = game:GetService("TextChatService")
 
 -- module memes
 local beamchatRS = rs:WaitForChild("beamchat")
@@ -56,7 +56,7 @@ if uis.TouchEnabled and
 end
 
 local success = pcall(function()
-	chatModule.canChat = cs:CanUserChatAsync(plr.UserId)
+	chatModule.canChat = textChatService:CanUserChatAsync(plr.UserId)
 end)
 
 if success and chatModule.canChat and not isMobile then
@@ -283,68 +283,29 @@ uis.InputBegan:Connect(function(input, gpe)
 					game:GetService("RunService").RenderStepped:Wait()
 					chatModule.chatbar()
 				end
-			end
-		else
-			if input.KeyCode == Enum.KeyCode.Return then
-				if chatModule.searching then
-					finalizeSearch()
-				end
-			elseif input.KeyCode == Enum.KeyCode.Tab then
+			else
 				if chatModule.chatbarToggle then
-					if chatModule.searching then
-						finalizeSearch()
-					else
-						chatModule.search()
-					end
-				end
-			elseif input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Down then
-				if chatModule.searching then
-					local res = chatbar:FindFirstChild("results")
-					if res then
+					if input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Down then
 						local direction = input.KeyCode == Enum.KeyCode.Up and -1 or 1
 
-						-- sorry for being lazy :'(
-						local oldSelected = chatModule.searching.selected
-						local selected, results = chatModule.searching.selected, chatModule.searching.results
-
-						if selected + direction > #results then
-							chatModule.searching.selected = 1
-							oldSelected = #results
-						elseif selected + direction > 0 then
-							chatModule.searching.selected = selected + direction
-						elseif selected + direction <= 0 then
-							chatModule.searching.selected = #results
-							oldSelected = 1
-						end
-
-						effects.fade(res:WaitForChild("entries")[oldSelected], 0.25, {TextTransparency = 0.4})
-						res:WaitForChild("highlight"):TweenPosition(u2(0, 0, 0, 26*(chatModule.searching.selected-1)), "Out", "Quart", 0.25, true)
-						effects.fade(res:WaitForChild("entries")[chatModule.searching.selected], 0.25, {TextTransparency = 0})
-					end
-				else
-					if chatModule.chatbarToggle then
-						if input.KeyCode == Enum.KeyCode.Up or input.KeyCode == Enum.KeyCode.Down then
-							local direction = input.KeyCode == Enum.KeyCode.Up and -1 or 1
-
-							if #chatModule.chatHistory > 0 then
-								if chatModule.historyPosition + direction < 0 then
-									if chatModule.historyPosition ~= 1 then
-										chatModule.chatCache = chatbar.input.Text
-										chatModule.historyPosition = #chatModule.chatHistory
+						if #chatModule.chatHistory > 0 then
+							if chatModule.historyPosition + direction < 0 then
+								if chatModule.historyPosition ~= 1 then
+									chatModule.chatCache = chatbar.input.Text
+									chatModule.historyPosition = #chatModule.chatHistory
+									chatbar.input.Text = chatModule.chatHistory[chatModule.historyPosition]
+									chatbar.input.CursorPosition = #chatbar.input.Text + 1
+								end
+							elseif chatModule.historyPosition + direction > #chatModule.chatHistory then
+								chatModule.historyPosition = 0
+								chatbar.input.Text = chatModule.chatCache
+								chatbar.input.CursorPosition = #chatbar.input.Text + 1
+							else
+								if chatModule.historyPosition + direction ~= 0 then
+									if chatModule.historyPosition ~= 0 then
+										chatModule.historyPosition = chatModule.historyPosition + direction
 										chatbar.input.Text = chatModule.chatHistory[chatModule.historyPosition]
 										chatbar.input.CursorPosition = #chatbar.input.Text + 1
-									end
-								elseif chatModule.historyPosition + direction > #chatModule.chatHistory then
-									chatModule.historyPosition = 0
-									chatbar.input.Text = chatModule.chatCache
-									chatbar.input.CursorPosition = #chatbar.input.Text + 1
-								else
-									if chatModule.historyPosition + direction ~= 0 then
-										if chatModule.historyPosition ~= 0 then
-											chatModule.historyPosition = chatModule.historyPosition + direction
-											chatbar.input.Text = chatModule.chatHistory[chatModule.historyPosition]
-											chatbar.input.CursorPosition = #chatbar.input.Text + 1
-										end
 									end
 								end
 							end
